@@ -15,7 +15,7 @@ func main() {
 
 	// Set the router as the default one shipped with Gin
 	router := gin.New()
-	router.Use(static.Serve("/", static.LocalFile("./client/build", true)))
+	router.Use(static.Serve("/", static.LocalFile("./client/dist", true)))
 
 	// Setup route group for the API
 	api := router.Group("/api")

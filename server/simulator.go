@@ -11,7 +11,14 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
-type Simulator struct{}
+type Simulator struct {
+	hasOpenConnection  bool
+	isConnectionSecure bool
+	readBuffer         []byte
+
+	writeCharacteristic bluetooth.Characteristic
+	readCharacteristic  bluetooth.Characteristic
+}
 
 var adapter = bluetooth.DefaultAdapter
 var state = SimulatorState{
@@ -20,7 +27,11 @@ var state = SimulatorState{
 	name:     randomName(),
 }
 
-func (s Simulator) StartBluetooth() {
+var encryption = DanaEncryption{
+	state: &state,
+}
+
+func (s *Simulator) StartBluetooth() {
 	setDeviceName(state.name)
 
 	must("enable BLE stack", adapter.Enable())
@@ -32,22 +43,59 @@ func (s Simulator) StartBluetooth() {
 		ServiceUUIDs: []bluetooth.UUID{},
 	}))
 
+	adapter.SetConnectHandler(s.handleConnectionChange)
+
 	// Start advertising
 	must("start adv", adv.Start())
 	fmt.Println("Adversing with name: " + state.name)
 
-	var heartRateMeasurement bluetooth.Characteristic
 	must("add service", adapter.AddService(&bluetooth.Service{
 		UUID: bluetooth.ServiceUUIDHeartRate,
 		Characteristics: []bluetooth.CharacteristicConfig{
 			{
-				Handle: &heartRateMeasurement,
-				UUID:   bluetooth.CharacteristicUUIDHeartRateMeasurement,
-				Value:  []byte{0, 75},
+				Handle: &s.writeCharacteristic,
+				UUID:   bluetooth.New16BitUUID(0xFFF1),
+				Value:  []byte{},
 				Flags:  bluetooth.CharacteristicNotifyPermission,
+			},
+			{
+				Handle:     &s.readCharacteristic,
+				UUID:       bluetooth.New16BitUUID(0xFFF2),
+				Value:      []byte{},
+				Flags:      bluetooth.CharacteristicWritePermission | bluetooth.CharacteristicWriteWithoutResponsePermission,
+				WriteEvent: s.handleMessage,
 			},
 		},
 	}))
+}
+
+func (s *Simulator) handleConnectionChange(device bluetooth.Device, connected bool) {
+	if connected && s.hasOpenConnection {
+		device.Disconnect()
+		fmt.Println("Rejecting connection from " + device.Address.String() + ", Already has an open connection")
+	} else if connected {
+		s.hasOpenConnection = true
+		s.isConnectionSecure = false
+		encryption.ResetRandomSyncKey()
+		s.readBuffer = []byte{}
+		fmt.Println("Device connected: " + device.Address.String())
+	} else {
+		s.hasOpenConnection = false
+		fmt.Println("Device disconnected: " + device.Address.String())
+	}
+}
+
+func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value []byte) {
+	if s.isConnectionSecure {
+		// Do second level decryption
+		value = encryption.DecryptionSecondLvl(value)
+	}
+
+	s.readBuffer = append(s.readBuffer, value...)
+	if len(s.readBuffer) < 6 {
+		// Buffer is not ready to be processed
+		return
+	}
 }
 
 func setDeviceName(name string) {
