@@ -7,8 +7,9 @@ type SimulatorState struct {
 }
 
 const (
-	DanaI    int = 0
+	DanaI    int = 2
 	DanaRSv3 int = 1
+	DanaRSv1 int = 0
 )
 
 const (

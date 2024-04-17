@@ -2,14 +2,16 @@ package server
 
 import (
 	codes "dana/simulator/server/packets"
+	"encoding/base64"
+	"fmt"
 )
 
 // Dana-I
 var ble5Keys = []byte{0x36, 0x36, 0x36, 0x38, 0x36, 0x36}
 var ble5RandomKeys = []byte{
-	((ble5Keys[0] - 0x30) * 10) + ble5Keys[1] - 0x30,
-	((ble5Keys[2] - 0x30) * 10) + ble5Keys[3] - 0x30,
-	((ble5Keys[4] - 0x30) * 10) + ble5Keys[5] - 0x30,
+	secondLvlEncryptionLookup[((ble5Keys[0]-0x30)*10)+ble5Keys[1]-0x30],
+	secondLvlEncryptionLookup[((ble5Keys[2]-0x30)*10)+ble5Keys[3]-0x30],
+	secondLvlEncryptionLookup[((ble5Keys[4]-0x30)*10)+ble5Keys[5]-0x30],
 }
 
 // DanaRS-v3
@@ -40,9 +42,35 @@ func (e DanaEncryption) Encryption(params EncryptionParams) []byte {
 	switch params.operationCode {
 	case codes.OPCODE_ENCRYPTION__PUMP_CHECK:
 		return e.encodePumpCheck()
+	case codes.OPCODE_ENCRYPTION__TIME_INFORMATION:
+		return e.encodeTimeInformation()
 	}
 
 	return e.encodeMessage(params.data, params.operationCode, false)
+}
+
+func (e *DanaEncryption) Decryption(data []byte, isEncryptionCommand bool) []byte {
+	data = encodePacketSerialNumber(&data, e.state.name)
+
+	if isEncryptionCommand && e.state.pumpType == DanaRSv1 {
+		panic("DanaRSv1 not supported yet (Decryption !isSecure)")
+	}
+
+	if int(data[2]) != (len(data) - 7) {
+		fmt.Println("ERROR: Invalid message received. Message too short - Data: " + base64.StdEncoding.EncodeToString(data))
+		return []byte{}
+	}
+
+	var endContent = len(data) - 4
+	var content = data[3:endContent]
+	var crc = generateCrc(content, e.state.pumpType, isEncryptionCommand)
+
+	if byte(crc>>8) != data[len(data)-4] || byte(crc&0xff) != data[len(data)-3] {
+		fmt.Println("ERROR: Invalid message received. Mismatch CRC - Data: " + base64.StdEncoding.EncodeToString(data) + ", crc: " + fmt.Sprint(crc))
+		return []byte{}
+	}
+
+	return content
 }
 
 func (e *DanaEncryption) DecryptionSecondLvl(data []byte) []byte {
@@ -108,27 +136,33 @@ func (e DanaEncryption) encodePumpCheck() []byte {
 	if e.state.pumpType == DanaRSv3 {
 		length = 0x09
 	} else if e.state.pumpType == DanaI {
-		length = 0x0e
+		length = 0x0c
 	}
 
-	var data = make([]byte, 0, length)
+	var data = make([]byte, length)
 
 	// Data
 	if e.state.pumpType == DanaI {
+		// OK - response code
+		data[0] = 0x4f // O
+		data[1] = 0x4b // K
+
+		data[2] = 0x4d // Unknown usage
+
 		// Hardware model
-		data[0] = 0x09
-		data[1] = 0x00
+		data[3] = 0x09
+		data[4] = 0x50 // Unsure what this value is, but is unused
 
 		// Firmware protocol
-		data[2] = 0x13
+		data[5] = 0x13
 
 		// BLE-5 keys
-		data[3] = ble5Keys[0]
-		data[4] = ble5Keys[1]
-		data[5] = ble5Keys[2]
-		data[6] = ble5Keys[3]
-		data[7] = ble5Keys[4]
-		data[8] = ble5Keys[5]
+		data[6] = ble5Keys[0]
+		data[7] = ble5Keys[1]
+		data[8] = ble5Keys[2]
+		data[9] = ble5Keys[3]
+		data[10] = ble5Keys[4]
+		data[11] = ble5Keys[5]
 	} else if e.state.pumpType == DanaRSv3 {
 		// Hardware model
 		data[0] = 0x05
@@ -143,12 +177,23 @@ func (e DanaEncryption) encodePumpCheck() []byte {
 	return e.encodeMessage(data, codes.OPCODE_ENCRYPTION__PUMP_CHECK, true)
 }
 
+func (e DanaEncryption) encodeTimeInformation() []byte {
+	var length byte = 1
+
+	var data = make([]byte, length)
+	if e.state.pumpType == DanaI {
+		data[0] = 0x00
+	}
+
+	return e.encodeMessage(data, codes.OPCODE_ENCRYPTION__TIME_INFORMATION, true)
+}
+
 func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionCommand bool) []byte {
-	var length = 0x02 + byte(len(data))
-	var buffer = make([]byte, 0, 5+len(data))
-	buffer[0] = 0xa5   // header 1
-	buffer[1] = 0xa5   // header 2
-	buffer[2] = length // length
+	var length = len(data)
+	var buffer = make([]byte, 9+len(data))
+	buffer[0] = 0xa5                // header 1
+	buffer[1] = 0xa5                // header 2
+	buffer[2] = byte(length) + 0x02 // length
 
 	// Message type. Either RESPONSE or NOTIFY or ENCRYPTION_RESPONSE
 	if isEncryptionCommand {
@@ -159,18 +204,18 @@ func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionComm
 
 	buffer[4] = opCode
 
-	for i := 0; i < len(data); i++ {
+	for i := 0; i < length; i++ {
 		buffer[5+i] = data[i]
 	}
 
-	var crc = generateCrc(buffer[3:3+buffer[2]], e.state.pumpType, isEncryptionCommand)
+	var crc = generateCrc(buffer[3:5+length], e.state.pumpType, isEncryptionCommand)
 	buffer[5+length] = byte(crc >> 8)
-	buffer[6+length] = byte(8 & 0xff)
+	buffer[6+length] = byte(crc & 0xff)
 	buffer[7+length] = 0x5a // footer 1
 	buffer[8+length] = 0x5a // footer 2
 
 	var encodedBuffer = encodePacketSerialNumber(&buffer, e.state.name)
-	if e.state.pumpType == 0 && isEncryptionCommand {
+	if e.state.pumpType == DanaRSv1 && isEncryptionCommand {
 		encodedBuffer = encodePacketTime(&encodedBuffer, timeSecret)
 		encodedBuffer = encodePacketPassword(&encodedBuffer, passwordSecret)
 		encodedBuffer = encodePacketPassKey(&encodedBuffer, passKeySecret)
@@ -179,18 +224,18 @@ func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionComm
 	return encodedBuffer
 }
 
-func generateCrc(buffer []byte, enhancedEncryption int, isEncryptionCommand bool) uint16 {
+func generateCrc(buffer []byte, pumpType int, isEncryptionCommand bool) uint16 {
 	var crc uint16 = 0
 
-	for _, byte := range buffer {
-		result := ((crc >> 8) | (crc << 8)) ^ uint16(byte)
+	for index := range buffer {
+		var result uint16 = ((crc >> 8) | (crc << 8)) ^ uint16(buffer[index])
 		result ^= (result & 0xff) >> 4
 		result ^= (result << 12)
 
-		if enhancedEncryption == 0 {
-			tmp := (result&0xff)<<3 | ((result&0xff)>>2)<<5
+		if pumpType == DanaRSv1 {
+			var tmp uint16 = (result&0xff)<<3 | ((result&0xff)>>2)<<5
 			result ^= tmp
-		} else if enhancedEncryption == 1 {
+		} else if pumpType == DanaRSv3 {
 			var tmp uint16 = 0
 			if isEncryptionCommand {
 				tmp = (result&0xff)<<3 | ((result&0xff)>>2)<<5
@@ -198,7 +243,7 @@ func generateCrc(buffer []byte, enhancedEncryption int, isEncryptionCommand bool
 				tmp = (result&0xff)<<5 | ((result&0xff)>>4)<<2
 			}
 			result ^= tmp
-		} else if enhancedEncryption == 2 {
+		} else if pumpType == DanaI {
 			var tmp uint16 = 0
 			if isEncryptionCommand {
 				tmp = (result&0xff)<<3 | ((result&0xff)>>2)<<5
