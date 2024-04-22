@@ -22,6 +22,8 @@ const (
 	ENCRYPTED_END_BYTE   byte = 0xee
 )
 
+var _, timeZoneOffset = time.Now().Zone()
+
 type Simulator struct {
 	hasOpenConnection  bool
 	isConnectionSecure bool
@@ -32,11 +34,7 @@ type Simulator struct {
 }
 
 var adapter = bluetooth.DefaultAdapter
-var state = SimulatorState{
-	status:   Idle,
-	pumpType: DanaI,
-	name:     randomName(),
-}
+var state = GetDefaultState()
 
 var encryption = DanaEncryption{
 	state: &state,
