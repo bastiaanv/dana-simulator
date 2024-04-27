@@ -56,7 +56,7 @@ func GetDefaultState() SimulatorState {
 	return SimulatorState{
 		status:   STATUS_IDLE,
 		pumpType: PUMP_TYPE_DANA_I,
-		name:     randomName(),
+		name:     "POX13545FG",
 
 		pumpTimeSkewInSeconds:       0,
 		pumpTimeZoneOffsetInSeconds: timeZoneOffset,

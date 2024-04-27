@@ -33,7 +33,6 @@ type Simulator struct {
 	readCharacteristic  bluetooth.Characteristic
 }
 
-var adapter = bluetooth.DefaultAdapter
 var state = GetDefaultState()
 
 var encryption = DanaEncryption{
@@ -48,6 +47,23 @@ var commandCenter = CommandCenter{
 func (s *Simulator) StartBluetooth() {
 	setDeviceName(state.name)
 
+	var adapter = bluetooth.DefaultAdapter
+	adapter.SetConnectHandler(func(device bluetooth.Device, connected bool) {
+		fmt.Println("HIII")
+		if connected && s.hasOpenConnection {
+			fmt.Println("ERROR: Rejecting connection from " + device.Address.String() + ", Already has an open connection")
+		} else if connected {
+			s.hasOpenConnection = true
+			s.isConnectionSecure = false
+			encryption.ResetRandomSyncKey()
+			s.readBuffer = []byte{}
+			fmt.Println("INFO: Device connected: " + device.Address.String())
+		} else {
+			s.hasOpenConnection = false
+			fmt.Println("INFO: Device disconnected: " + device.Address.String())
+		}
+	})
+
 	must("enable BLE stack", adapter.Enable())
 
 	// Define the peripheral device info.
@@ -56,8 +72,6 @@ func (s *Simulator) StartBluetooth() {
 		LocalName:    state.name,
 		ServiceUUIDs: []bluetooth.UUID{},
 	}))
-
-	adapter.SetConnectHandler(s.handleConnectionChange)
 
 	// Start advertising
 	must("start adv", adv.Start())
@@ -83,22 +97,6 @@ func (s *Simulator) StartBluetooth() {
 	}))
 
 	commandCenter.writeCharacteristic = &s.writeCharacteristic
-}
-
-func (s *Simulator) handleConnectionChange(device bluetooth.Device, connected bool) {
-	if connected && s.hasOpenConnection {
-		device.Disconnect()
-		fmt.Println("ERROR: Rejecting connection from " + device.Address.String() + ", Already has an open connection")
-	} else if connected {
-		s.hasOpenConnection = true
-		s.isConnectionSecure = false
-		encryption.ResetRandomSyncKey()
-		s.readBuffer = []byte{}
-		fmt.Println("INFO: Device connected: " + device.Address.String())
-	} else {
-		s.hasOpenConnection = false
-		fmt.Println("INFO: Device disconnected: " + device.Address.String())
-	}
 }
 
 func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value []byte) {
@@ -171,9 +169,13 @@ func setDeviceName(name string) {
 	var cmd = exec.Command("/bin/sh", "-c", "sudo mv machine-info /etc/machine-info")
 	must("Write bluetooth name", cmd.Run())
 
-	// Randomize MAC-address to prevent device name caching issues
+	// Randomize MAC-address to prevent device name caching issues, based on device name
 	// https://raspberrypi.stackexchange.com/a/124117
-	var newMac = "0x" + randomHex() + " 0x" + randomHex() + " 0x" + randomHex() + " 0x" + randomHex() + " 0x" + randomHex() + " 0x" + randomHex()
+	var newMac = ""
+	for i := 0; i < 6; i++ {
+		newMac += fmt.Sprintf("0x%x ", name[i])
+	}
+
 	fmt.Println("New BLE mac address (reversed): " + newMac)
 	cmd = exec.Command("/bin/sh", "-c", "sudo hcitool cmd 0x3f 0x001 "+newMac)
 	must("Randomize MAC-address", cmd.Run())
