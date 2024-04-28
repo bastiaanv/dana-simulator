@@ -1,7 +1,6 @@
 package server
 
 import (
-	codes "dana/simulator/server/packets"
 	"encoding/base64"
 	"fmt"
 )
@@ -40,9 +39,9 @@ func (e *DanaEncryption) ResetRandomSyncKey() {
 
 func (e DanaEncryption) Encryption(params EncryptionParams) []byte {
 	switch params.operationCode {
-	case codes.OPCODE_ENCRYPTION__PUMP_CHECK:
+	case OPCODE_ENCRYPTION__PUMP_CHECK:
 		return e.encodePumpCheck()
-	case codes.OPCODE_ENCRYPTION__TIME_INFORMATION:
+	case OPCODE_ENCRYPTION__TIME_INFORMATION:
 		return e.encodeTimeInformation()
 	}
 
@@ -119,9 +118,10 @@ func (e *DanaEncryption) EncryptionSecondLvl(data []byte) []byte {
 	return data
 }
 
-func (e *DanaEncryption) Decryption(data []byte, isEncryptionCommand bool) []byte {
+func (e *DanaEncryption) Decryption(data []byte) []byte {
 	data = encodePacketSerialNumber(&data, e.state.name)
 
+	var isEncryptionCommand = data[3] == 1
 	if isEncryptionCommand && e.state.pumpType == PUMP_TYPE_DANA_RS_V1 {
 		panic("DanaRSv1 not supported yet (Decryption !isSecure)")
 	}
@@ -244,7 +244,7 @@ func (e DanaEncryption) encodePumpCheck() []byte {
 		data[0] = 0x04
 	}
 
-	return e.encodeMessage(data, codes.OPCODE_ENCRYPTION__PUMP_CHECK, true)
+	return e.encodeMessage(data, OPCODE_ENCRYPTION__PUMP_CHECK, true)
 }
 
 func (e DanaEncryption) encodeTimeInformation() []byte {
@@ -255,7 +255,7 @@ func (e DanaEncryption) encodeTimeInformation() []byte {
 		data[0] = 0x00
 	}
 
-	return e.encodeMessage(data, codes.OPCODE_ENCRYPTION__TIME_INFORMATION, true)
+	return e.encodeMessage(data, OPCODE_ENCRYPTION__TIME_INFORMATION, true)
 }
 
 func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionCommand bool) []byte {
@@ -267,9 +267,9 @@ func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionComm
 
 	// Message type. Either RESPONSE or NOTIFY or ENCRYPTION_RESPONSE
 	if isEncryptionCommand {
-		buffer[3] = codes.TYPE_ENCRYPTION_RESPONSE
+		buffer[3] = TYPE_ENCRYPTION_RESPONSE
 	} else {
-		buffer[3] = codes.TYPE_RESPONSE
+		buffer[3] = TYPE_RESPONSE
 	}
 
 	buffer[4] = opCode

@@ -4,8 +4,6 @@ go 1.22.2
 
 require tinygo.org/x/bluetooth v0.9.0
 
-replace tinygo.org/x/bluetooth v0.9.0 => ./pkg/bluetooth
-
 require (
 	github.com/bytedance/sonic v1.11.3 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20230717121745-296ad89f973d // indirect

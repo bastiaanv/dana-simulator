@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"time"
 
-	codes "dana/simulator/server/packets"
-
 	"tinygo.org/x/bluetooth"
 )
 
@@ -25,9 +23,7 @@ const (
 var _, timeZoneOffset = time.Now().Zone()
 
 type Simulator struct {
-	hasOpenConnection  bool
-	isConnectionSecure bool
-	readBuffer         []byte
+	readBuffer []byte
 
 	writeCharacteristic bluetooth.Characteristic
 	readCharacteristic  bluetooth.Characteristic
@@ -48,21 +44,21 @@ func (s *Simulator) StartBluetooth() {
 	setDeviceName(state.name)
 
 	var adapter = bluetooth.DefaultAdapter
-	adapter.SetConnectHandler(func(device bluetooth.Device, connected bool) {
-		fmt.Println("HIII")
-		if connected && s.hasOpenConnection {
-			fmt.Println("ERROR: Rejecting connection from " + device.Address.String() + ", Already has an open connection")
-		} else if connected {
-			s.hasOpenConnection = true
-			s.isConnectionSecure = false
-			encryption.ResetRandomSyncKey()
-			s.readBuffer = []byte{}
-			fmt.Println("INFO: Device connected: " + device.Address.String())
-		} else {
-			s.hasOpenConnection = false
-			fmt.Println("INFO: Device disconnected: " + device.Address.String())
-		}
-	})
+	// TinyGo bluetooth (linux) doesnt support connection handler
+	// adapter.SetConnectHandler(func(device bluetooth.Device, connected bool) {
+	// 	if connected && s.hasOpenConnection {
+	// 		fmt.Println("ERROR: Rejecting connection from " + device.Address.String() + ", Already has an open connection")
+	// 	} else if connected {
+	// 		s.hasOpenConnection = true
+	// 		s.isConnectionSecure = false
+	// 		encryption.ResetRandomSyncKey()
+	// 		s.readBuffer = []byte{}
+	// 		fmt.Println("INFO: Device connected: " + device.Address.String())
+	// 	} else {
+	// 		s.hasOpenConnection = false
+	// 		fmt.Println("INFO: Device disconnected: " + device.Address.String())
+	// 	}
+	// })
 
 	must("enable BLE stack", adapter.Enable())
 
@@ -100,8 +96,13 @@ func (s *Simulator) StartBluetooth() {
 }
 
 func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value []byte) {
-	if s.isConnectionSecure {
-		// Do second level decryption
+	// If we receive a new message (for a non-danaRS-v1 pump) and the start byte isnt the normal start byte,
+	// we assume we need to do a second lvl decryption first.
+
+	// Since TinyGo Bluetooth doesnt notify us when a device is connected or disconnected,
+	// is this the only we currently
+	if state.pumpType != PUMP_TYPE_DANA_RS_V1 && len(s.readBuffer) == 0 && value[0] != PACKET_START_BYTE {
+		fmt.Println("Doing 2nd level decryption")
 		value = encryption.DecryptionSecondLvl(value)
 	}
 
@@ -143,7 +144,7 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 		return
 	}
 
-	var decryptedData = encryption.Decryption(s.readBuffer, !s.isConnectionSecure)
+	var decryptedData = encryption.Decryption(s.readBuffer)
 	s.readBuffer = []byte{}
 
 	if len(decryptedData) == 0 {
@@ -151,10 +152,10 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 		return
 	}
 
-	if decryptedData[0] == codes.TYPE_ENCRYPTION_REQUEST {
-		s.isConnectionSecure = commandCenter.ProcessEncryptionCommand(decryptedData)
+	if decryptedData[0] == TYPE_ENCRYPTION_REQUEST {
+		commandCenter.ProcessEncryptionCommand(decryptedData)
 
-	} else if decryptedData[0] == codes.TYPE_COMMAND {
+	} else if decryptedData[0] == TYPE_COMMAND {
 		commandCenter.ProcessCommand(decryptedData)
 
 	} else {

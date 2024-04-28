@@ -37,6 +37,10 @@ type SimulatorState struct {
 	tempBasalActiveTill *time.Time
 	tempBasalPercentage int
 
+	// History
+	isInHistoryUploadMode bool
+	history               []HistoryItem
+
 	// User options
 	lowReservoirWarning  int
 	timeDisplayIn24H     bool
@@ -50,6 +54,14 @@ type SimulatorState struct {
 	cannulaVolume        int
 	refillAmount         int
 	targetBg             int
+}
+
+type HistoryItem struct {
+	timestamp time.Time
+	code      byte
+	param7    byte
+	param8    byte
+	value     uint16
 }
 
 func GetDefaultState() SimulatorState {

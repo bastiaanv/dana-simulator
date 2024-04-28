@@ -1,7 +1,6 @@
 package server
 
 import (
-	codes "dana/simulator/server/packets"
 	"encoding/base64"
 	"fmt"
 	"math"
@@ -16,64 +15,79 @@ type CommandCenter struct {
 	writeCharacteristic *bluetooth.Characteristic
 }
 
-func (c *CommandCenter) ProcessEncryptionCommand(data []byte) bool {
+func (c *CommandCenter) ProcessEncryptionCommand(data []byte) {
 	switch data[1] {
-	case codes.OPCODE_ENCRYPTION__PUMP_CHECK:
-		return c.respondToCommandRequest()
-	case codes.OPCODE_ENCRYPTION__TIME_INFORMATION:
-		return c.respondToTimeRequest()
+	case OPCODE_ENCRYPTION__PUMP_CHECK:
+		c.respondToCommandRequest()
+		return
+	case OPCODE_ENCRYPTION__TIME_INFORMATION:
+		c.respondToTimeRequest()
+		return
 	}
 
 	fmt.Println("ERROR: UNIMPLEMENTED ENCRYPTION COMMAND: " + fmt.Sprint(data[1]))
-	return false
 }
 
 func (c *CommandCenter) ProcessCommand(data []byte) {
+	var command = data[1]
+
+	if !c.state.isInHistoryUploadMode && command >= OPCODE_REVIEW__BOLUS_AVG && command <= OPCODE_REVIEW__ALL_HISTORY {
+		fmt.Println("ERROR: Trying to do a history command while not in history upload mode...")
+		return
+	}
+
+	if command >= OPCODE_REVIEW__BOLUS_AVG && command <= OPCODE_REVIEW__ALL_HISTORY {
+		var date = getDate(data, 0, time.Local)
+		c.respondToHistoryRequest(command, date)
+		return
+	}
+
 	switch data[1] {
-	case codes.OPCODE_ETC__KEEP_CONNECTION:
+	case OPCODE_ETC__KEEP_CONNECTION:
 		c.respondToKeepConnection()
 		return
-	case codes.OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION:
+	case OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION:
 		c.respondToInitialScreenInformation()
 		return
-	case codes.OPCODE_OPTION__GET_PUMP_TIME:
+	case OPCODE_OPTION__GET_PUMP_TIME:
 		c.respondToGetTime()
 		return
-	case codes.OPCODE_OPTION__GET_PUMP_UTC_AND_TIME_ZONE:
+	case OPCODE_OPTION__GET_PUMP_UTC_AND_TIME_ZONE:
 		c.respondToGetTimeWithUtc()
 		return
-	case codes.OPCODE_OPTION__GET_USER_OPTION:
+	case OPCODE_OPTION__SET_PUMP_TIME:
+		c.respondToSetTime(data)
+		return
+	case OPCODE_OPTION__GET_USER_OPTION:
 		c.respondToGetUserOptions()
+		return
+	case OPCODE_REVIEW__SET_HISTORY_UPLOAD_MODE:
+		c.respondToSetHistoryMode(data[2] == 1)
 		return
 	}
 
 	fmt.Println("ERROR: UNIMPLEMENTED COMMAND: " + fmt.Sprint(data[1]))
 }
 
-func (c *CommandCenter) respondToCommandRequest() bool {
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: codes.OPCODE_ENCRYPTION__PUMP_CHECK, data: []byte{}})
+func (c *CommandCenter) respondToCommandRequest() {
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ENCRYPTION__PUMP_CHECK, data: []byte{}})
 
 	fmt.Println("INFO: Sending OPCODE_ENCRYPTION__PUMP_CHECK - Data: " + base64.StdEncoding.EncodeToString(data))
 	c.write(data)
-
-	return false
 }
 
-func (c *CommandCenter) respondToTimeRequest() bool {
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: codes.OPCODE_ENCRYPTION__TIME_INFORMATION, data: []byte{}})
+func (c *CommandCenter) respondToTimeRequest() {
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ENCRYPTION__TIME_INFORMATION, data: []byte{}})
 
 	fmt.Println("INFO: Sending OPCODE_ENCRYPTION__TIME_INFORMATION - Data: " + base64.StdEncoding.EncodeToString(data))
 	c.write(data)
-
-	// When pump type is Dana-I, handshake is completed
-	return c.state.pumpType == PUMP_TYPE_DANA_I
 }
 
 func (c CommandCenter) respondToKeepConnection() {
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: codes.OPCODE_ETC__KEEP_CONNECTION, data: []byte{0}})
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ETC__KEEP_CONNECTION, data: []byte{0}})
 	data = c.encryption.EncryptionSecondLvl(data)
 
-	fmt.Println("INFO: Sending OPCODE_ETC__KEEP_CONNECTION - Data: " + base64.StdEncoding.EncodeToString(data))
+	fmt.Println("INFO: Sending OPCODE_ETC__KEEP_CONNECTION - Data: " + base64.StdEncoding.EncodeToString([]byte{0}))
 	c.write(data)
 }
 
@@ -129,10 +143,11 @@ func (c CommandCenter) respondToInitialScreenInformation() {
 		message[15] = 0
 	}
 
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: codes.OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION, data: message})
+	fmt.Println("INFO: Sending OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION - Data: " + base64.StdEncoding.EncodeToString(message))
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION, data: message})
 	data = c.encryption.EncryptionSecondLvl(data)
 
-	fmt.Println("INFO: Sending OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION - Data: " + base64.StdEncoding.EncodeToString(data))
 	c.write(data)
 }
 
@@ -148,10 +163,11 @@ func (c CommandCenter) respondToGetTime() {
 	message[4] = byte(time.Minute())
 	message[5] = byte(time.Second())
 
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: codes.OPCODE_OPTION__GET_PUMP_TIME, data: message})
+	fmt.Println("INFO: Sending OPCODE_OPTION__GET_PUMP_TIME - Data: " + base64.StdEncoding.EncodeToString(message))
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__GET_PUMP_TIME, data: message})
 	data = c.encryption.EncryptionSecondLvl(data)
 
-	fmt.Println("INFO: Sending OPCODE_OPTION__GET_PUMP_TIME - Data: " + base64.StdEncoding.EncodeToString(data))
 	c.write(data)
 }
 
@@ -173,12 +189,13 @@ func (c CommandCenter) respondToGetTimeWithUtc() {
 	message[3] = byte(time.UTC().Hour())
 	message[4] = byte(time.UTC().Minute())
 	message[5] = byte(time.UTC().Second())
-	message[6] = byte(c.state.pumpTimeZoneOffsetInSeconds)
+	message[6] = byte(c.state.pumpTimeZoneOffsetInSeconds / 3600)
 
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: codes.OPCODE_OPTION__GET_PUMP_UTC_AND_TIME_ZONE, data: message})
+	fmt.Println("INFO: Sending OPCODE_OPTION__GET_PUMP_TIME - Data: " + base64.StdEncoding.EncodeToString(message))
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__GET_PUMP_UTC_AND_TIME_ZONE, data: message})
 	data = c.encryption.EncryptionSecondLvl(data)
 
-	fmt.Println("INFO: Sending OPCODE_OPTION__GET_PUMP_TIME - Data: " + base64.StdEncoding.EncodeToString(data))
 	c.write(data)
 }
 
@@ -221,10 +238,97 @@ func (c CommandCenter) respondToGetUserOptions() {
 		message[19] = byte(c.state.targetBg)
 	}
 
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: codes.OPCODE_OPTION__GET_USER_OPTION, data: message})
+	fmt.Println("INFO: Sending OPCODE_OPTION__GET_USER_OPTION - Data: " + base64.StdEncoding.EncodeToString(message))
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__GET_USER_OPTION, data: message})
 	data = c.encryption.EncryptionSecondLvl(data)
 
-	fmt.Println("INFO: Sending OPCODE_OPTION__GET_USER_OPTION - Data: " + base64.StdEncoding.EncodeToString(data))
+	c.write(data)
+}
+
+func (c *CommandCenter) respondToSetHistoryMode(enabled bool) {
+	c.state.isInHistoryUploadMode = enabled
+
+	fmt.Println("INFO: Sending OPCODE_REVIEW__SET_HISTORY_UPLOAD_MODE - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_REVIEW__SET_HISTORY_UPLOAD_MODE, data: []byte{0x00}})
+	data = c.encryption.EncryptionSecondLvl(data)
+
+	c.write(data)
+}
+
+func (c *CommandCenter) respondToHistoryRequest(code byte, from time.Time) {
+	var filterOnDate = func(h HistoryItem) bool { return h.timestamp.After(from) }
+	var filterOnCode = func(h HistoryItem) bool { return h.code == code }
+
+	var items = filter(c.state.history, filterOnDate)
+	if code != OPCODE_REVIEW__ALL_HISTORY {
+		items = filter(items, filterOnCode)
+	}
+
+	fmt.Println("INFO: Uploading history items. Count: " + fmt.Sprint(items))
+
+	for _, item := range items {
+		var message = make([]byte, 11)
+		message[0] = item.code - 0x0f
+		message[1] = byte(item.timestamp.Year() - 2000)
+		message[2] = byte(item.timestamp.Month())
+		message[3] = byte(item.timestamp.Day())
+		message[4] = byte(item.timestamp.Hour())
+		message[5] = byte(item.timestamp.Minute())
+		message[6] = byte(item.timestamp.Second())
+		message[7] = byte(item.param7)
+		message[8] = byte(item.param8)
+		message[9] = byte(item.value << 8)
+		message[10] = byte(item.value)
+
+		var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message})
+		data = c.encryption.EncryptionSecondLvl(data)
+
+		fmt.Println("INFO: Sending hisory item - Data: " + base64.StdEncoding.EncodeToString(message))
+		c.write(data)
+	}
+
+	// Send upload done message
+	var message = make([]byte, 3)
+	message[0] = 0
+	message[1] = 0
+	message[2] = 0
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message})
+	data = c.encryption.EncryptionSecondLvl(data)
+
+	fmt.Println("INFO: Done uploading history - Data: " + base64.StdEncoding.EncodeToString(message))
+	c.write(data)
+}
+
+func (c *CommandCenter) respondToSetTime(request []byte) {
+	var pumpTime = time.Now().Add(time.Duration(c.state.pumpTimeSkewInSeconds * int(time.Second)))
+	var requestTime = getDate(request, 0, time.Local)
+
+	var diff = pumpTime.Sub(requestTime)
+	c.state.pumpTimeSkewInSeconds = int(diff.Seconds())
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__SET_PUMP_TIME, data: []byte{0x00}})
+	data = c.encryption.EncryptionSecondLvl(data)
+
+	fmt.Println("INFO: Done uploading history - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
+	c.write(data)
+}
+
+func (c *CommandCenter) respondToSetTimeWithUtc(request []byte) {
+	var pumpTime = time.Now().UTC().Add(time.Duration(c.state.pumpTimeSkewInSeconds * int(time.Second)))
+	var requestTime = getDate(request, 0, time.UTC)
+
+	var diff = pumpTime.Sub(requestTime)
+	c.state.pumpTimeSkewInSeconds = int(diff.Seconds())
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__SET_PUMP_TIME, data: []byte{0x00}})
+	data = c.encryption.EncryptionSecondLvl(data)
+
+	c.state.pumpTimeZoneOffsetInSeconds = int(request[8]) * 3600
+
+	fmt.Println("INFO: Done uploading history - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
 	c.write(data)
 }
 
@@ -242,4 +346,26 @@ func (c *CommandCenter) write(data []byte) {
 
 		index += length
 	}
+}
+
+func getDate(data []byte, startIndex int, loc *time.Location) time.Time {
+	return time.Date(
+		int(data[startIndex+2])+2000,
+		time.Month(data[startIndex+3]),
+		int(data[startIndex+4]),
+		int(data[startIndex+5]),
+		int(data[startIndex+6]),
+		int(data[startIndex+7]),
+		0,
+		loc,
+	)
+}
+
+func filter[T any](ss []T, test func(T) bool) (ret []T) {
+	for _, s := range ss {
+		if test(s) {
+			ret = append(ret, s)
+		}
+	}
+	return
 }
