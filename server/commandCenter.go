@@ -58,11 +58,17 @@ func (c *CommandCenter) ProcessCommand(data []byte) {
 	case OPCODE_OPTION__SET_PUMP_TIME:
 		c.respondToSetTime(data)
 		return
+	case OPCODE_OPTION__SET_PUMP_UTC_AND_TIME_ZONE:
+		c.respondToSetTimeWithUtc(data)
+		return
 	case OPCODE_OPTION__GET_USER_OPTION:
 		c.respondToGetUserOptions()
 		return
 	case OPCODE_REVIEW__SET_HISTORY_UPLOAD_MODE:
 		c.respondToSetHistoryMode(data[2] == 1)
+		return
+	case OPCODE_BOLUS__SET_STEP_BOLUS_START:
+		c.respondToBolusStart(data)
 		return
 	}
 
@@ -117,8 +123,8 @@ func (c CommandCenter) respondToInitialScreenInformation() {
 	message[4] = 250
 
 	var reservoirLevel = int(c.state.reservoirLevel * 100)
-	message[5] = byte(reservoirLevel << 8)
-	message[6] = byte(reservoirLevel)
+	message[5] = byte(reservoirLevel)
+	message[6] = byte(reservoirLevel >> 8)
 
 	// currentBasal - Not used
 	message[7] = 0
@@ -207,7 +213,7 @@ func (c CommandCenter) respondToGetUserOptions() {
 
 	var message = make([]byte, length)
 	message[0] = 0
-	if c.state.timeDisplayIn24H {
+	if c.state.timeDisplayIn12H {
 		message[0] = 1
 	}
 
@@ -223,10 +229,10 @@ func (c CommandCenter) respondToGetUserOptions() {
 	message[6] = byte(c.state.units)
 	message[7] = byte(c.state.shutdownInHours)
 	message[8] = byte(c.state.lowReservoirWarning)
-	message[9] = byte(c.state.cannulaVolume << 8)
-	message[10] = byte(c.state.cannulaVolume)
-	message[11] = byte(c.state.refillAmount << 8)
-	message[12] = byte(c.state.refillAmount)
+	message[9] = byte(c.state.cannulaVolume)
+	message[10] = byte(c.state.cannulaVolume >> 8)
+	message[11] = byte(c.state.refillAmount)
+	message[12] = byte(c.state.refillAmount >> 8)
 	message[13] = 1 // Selectable language 1
 	message[14] = 1 // Selectable language 2
 	message[15] = 1 // Selectable language 3
@@ -234,8 +240,8 @@ func (c CommandCenter) respondToGetUserOptions() {
 	message[17] = 1 // Selectable language 5
 
 	if c.state.pumpType == PUMP_TYPE_DANA_I {
-		message[18] = byte(c.state.targetBg << 8)
-		message[19] = byte(c.state.targetBg)
+		message[18] = byte(c.state.targetBg)
+		message[19] = byte(c.state.targetBg >> 8)
 	}
 
 	fmt.Println("INFO: Sending OPCODE_OPTION__GET_USER_OPTION - Data: " + base64.StdEncoding.EncodeToString(message))
@@ -279,8 +285,8 @@ func (c *CommandCenter) respondToHistoryRequest(code byte, from time.Time) {
 		message[6] = byte(item.timestamp.Second())
 		message[7] = byte(item.param7)
 		message[8] = byte(item.param8)
-		message[9] = byte(item.value << 8)
-		message[10] = byte(item.value)
+		message[9] = byte(item.value)
+		message[10] = byte(item.value << 8)
 
 		var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message})
 		data = c.encryption.EncryptionSecondLvl(data)
@@ -312,7 +318,7 @@ func (c *CommandCenter) respondToSetTime(request []byte) {
 	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__SET_PUMP_TIME, data: []byte{0x00}})
 	data = c.encryption.EncryptionSecondLvl(data)
 
-	fmt.Println("INFO: Done uploading history - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
+	fmt.Println("INFO: Sending OPCODE_OPTION__SET_PUMP_TIME - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
 	c.write(data)
 }
 
@@ -323,13 +329,26 @@ func (c *CommandCenter) respondToSetTimeWithUtc(request []byte) {
 	var diff = pumpTime.Sub(requestTime)
 	c.state.pumpTimeSkewInSeconds = int(diff.Seconds())
 
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__SET_PUMP_TIME, data: []byte{0x00}})
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_OPTION__SET_PUMP_UTC_AND_TIME_ZONE, data: []byte{0x00}})
 	data = c.encryption.EncryptionSecondLvl(data)
 
 	c.state.pumpTimeZoneOffsetInSeconds = int(request[8]) * 3600
 
-	fmt.Println("INFO: Done uploading history - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
+	fmt.Println("INFO: Sending OPCODE_OPTION__SET_PUMP_UTC_AND_TIME_ZONE - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
 	c.write(data)
+}
+
+func (c *CommandCenter) respondToBolusStart(request []byte) {
+	var amount = float32(request[2]) + float32(int(request[3])<<8)
+	var speed = request[4]
+
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_BOLUS__SET_STEP_BOLUS_START, data: []byte{0x00}})
+	data = c.encryption.EncryptionSecondLvl(data)
+
+	fmt.Println("INFO: Sending OPCODE_BOLUS__SET_STEP_BOLUS_START - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
+	c.write(data)
+
+	c.doBolus(amount/100, speed)
 }
 
 func (c *CommandCenter) write(data []byte) {
@@ -346,6 +365,55 @@ func (c *CommandCenter) write(data []byte) {
 
 		index += length
 	}
+}
+
+func (c *CommandCenter) doBolus(amount float32, speed byte) {
+	var send = func(code byte, currentAmount int) {
+		var message = make([]byte, 2)
+
+		message[0] = byte(currentAmount)
+		message[1] = byte(currentAmount >> 8)
+
+		var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message, isNotifyCommand: true})
+		data = c.encryption.EncryptionSecondLvl(data)
+
+		fmt.Println("INFO: Sending OPCODE_BOLUS__SET_STEP_BOLUS_START - Data: " + base64.StdEncoding.EncodeToString(message))
+		c.write(data)
+	}
+
+	var timePerTick = 500 * time.Millisecond
+	ticker := time.NewTicker(timePerTick)
+	go func() {
+		var fullDuration = getFullDuration(amount, speed)
+		var index float32 = 0
+		var totalTicks = float32(fullDuration / timePerTick)
+
+		for range ticker.C {
+			var currentAmount = index / totalTicks * amount
+			if currentAmount >= amount {
+				c.state.reservoirLevel -= amount
+				send(OPCODE_NOTIFY__DELIVERY_COMPLETE, int(amount*100))
+				ticker.Stop()
+			}
+
+			send(OPCODE_NOTIFY__DELIVERY_RATE_DISPLAY, int(currentAmount*100))
+			index += 1
+		}
+	}()
+}
+
+func getFullDuration(amount float32, speed byte) time.Duration {
+	switch speed {
+	case 0: // 12sec/U
+		return time.Duration(amount * 12 * float32(time.Second))
+	case 1: // 30 sec/U
+		return time.Duration(amount * 30 * float32(time.Second))
+	case 2: // 60 sec/U
+		return time.Duration(amount * 60 * float32(time.Second))
+	}
+
+	fmt.Println("ERROR: Received invalid speed: " + fmt.Sprint(speed))
+	return 0
 }
 
 func getDate(data []byte, startIndex int, loc *time.Location) time.Time {

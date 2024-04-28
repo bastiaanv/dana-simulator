@@ -43,7 +43,7 @@ type SimulatorState struct {
 
 	// User options
 	lowReservoirWarning  int
-	timeDisplayIn24H     bool
+	timeDisplayIn12H     bool
 	buttonScroll         bool
 	beepAndAlarm         int
 	lcdOnInSeconds       int
@@ -79,7 +79,7 @@ func GetDefaultState() SimulatorState {
 		tempBasalActiveTill: nil,
 		tempBasalPercentage: 100,
 
-		timeDisplayIn24H:     true,
+		timeDisplayIn12H:     false,
 		buttonScroll:         true,
 		beepAndAlarm:         ALARM_TYPE_SOUND, // Assuming the pump is in Silent tone mode
 		lcdOnInSeconds:       15,

@@ -29,8 +29,9 @@ type DanaEncryption struct {
 }
 
 type EncryptionParams struct {
-	operationCode byte
-	data          []byte
+	operationCode   byte
+	data            []byte
+	isNotifyCommand bool
 }
 
 func (e *DanaEncryption) ResetRandomSyncKey() {
@@ -45,7 +46,7 @@ func (e DanaEncryption) Encryption(params EncryptionParams) []byte {
 		return e.encodeTimeInformation()
 	}
 
-	return e.encodeMessage(params.data, params.operationCode, false)
+	return e.encodeMessage(params.data, params.operationCode, false, params.isNotifyCommand)
 }
 
 func (e *DanaEncryption) EncryptionSecondLvl(data []byte) []byte {
@@ -244,7 +245,7 @@ func (e DanaEncryption) encodePumpCheck() []byte {
 		data[0] = 0x04
 	}
 
-	return e.encodeMessage(data, OPCODE_ENCRYPTION__PUMP_CHECK, true)
+	return e.encodeMessage(data, OPCODE_ENCRYPTION__PUMP_CHECK, true, false)
 }
 
 func (e DanaEncryption) encodeTimeInformation() []byte {
@@ -255,10 +256,10 @@ func (e DanaEncryption) encodeTimeInformation() []byte {
 		data[0] = 0x00
 	}
 
-	return e.encodeMessage(data, OPCODE_ENCRYPTION__TIME_INFORMATION, true)
+	return e.encodeMessage(data, OPCODE_ENCRYPTION__TIME_INFORMATION, true, false)
 }
 
-func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionCommand bool) []byte {
+func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionCommand bool, isNotifyCommand bool) []byte {
 	var length = len(data)
 	var buffer = make([]byte, 9+len(data))
 	buffer[0] = 0xa5                // header 1
@@ -268,6 +269,8 @@ func (e DanaEncryption) encodeMessage(data []byte, opCode byte, isEncryptionComm
 	// Message type. Either RESPONSE or NOTIFY or ENCRYPTION_RESPONSE
 	if isEncryptionCommand {
 		buffer[3] = TYPE_ENCRYPTION_RESPONSE
+	} else if isNotifyCommand {
+		buffer[3] = TYPE_NOTIFY
 	} else {
 		buffer[3] = TYPE_RESPONSE
 	}

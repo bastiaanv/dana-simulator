@@ -102,7 +102,6 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 	// Since TinyGo Bluetooth doesnt notify us when a device is connected or disconnected,
 	// is this the only we currently
 	if state.pumpType != PUMP_TYPE_DANA_RS_V1 && len(s.readBuffer) == 0 && value[0] != PACKET_START_BYTE {
-		fmt.Println("Doing 2nd level decryption")
 		value = encryption.DecryptionSecondLvl(value)
 	}
 
