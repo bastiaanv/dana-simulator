@@ -3,11 +3,9 @@ package server
 import (
 	"encoding/base64"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/exec"
 	"slices"
-	"strconv"
 	"time"
 
 	"tinygo.org/x/bluetooth"
@@ -25,6 +23,8 @@ var _, timeZoneOffset = time.Now().Zone()
 type Simulator struct {
 	readBuffer []byte
 
+	shouldDoSecondDecryption bool
+
 	writeCharacteristic bluetooth.Characteristic
 	readCharacteristic  bluetooth.Characteristic
 }
@@ -41,7 +41,7 @@ var commandCenter = CommandCenter{
 }
 
 func (s *Simulator) StartBluetooth() {
-	setDeviceName(state.name)
+	setDeviceName(state.Name)
 
 	var adapter = bluetooth.DefaultAdapter
 	// TinyGo bluetooth (linux) doesnt support connection handler
@@ -65,13 +65,13 @@ func (s *Simulator) StartBluetooth() {
 	// Define the peripheral device info.
 	adv := adapter.DefaultAdvertisement()
 	must("config adv", adv.Configure(bluetooth.AdvertisementOptions{
-		LocalName:    state.name,
+		LocalName:    state.Name,
 		ServiceUUIDs: []bluetooth.UUID{},
 	}))
 
 	// Start advertising
 	must("start adv", adv.Start())
-	fmt.Println("Adversing with name: " + state.name)
+	fmt.Println("Adversing with name: " + state.Name)
 
 	must("add service", adapter.AddService(&bluetooth.Service{
 		UUID: bluetooth.New16BitUUID(0xFFF0),
@@ -101,7 +101,16 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 
 	// Since TinyGo Bluetooth doesnt notify us when a device is connected or disconnected,
 	// is this the only we currently
-	if state.pumpType != PUMP_TYPE_DANA_RS_V1 && len(s.readBuffer) == 0 && value[0] != PACKET_START_BYTE {
+
+	if state.PumpType == PUMP_TYPE_DANA_RS_V1 {
+		// Isnt supported with the DanaRS_v1
+		s.shouldDoSecondDecryption = false
+	} else if len(s.readBuffer) == 0 {
+		// Only check if when the buffer is empty == new message
+		s.shouldDoSecondDecryption = value[0] != PACKET_START_BYTE
+	}
+
+	if s.shouldDoSecondDecryption {
 		value = encryption.DecryptionSecondLvl(value)
 	}
 
@@ -187,31 +196,6 @@ func setDeviceName(name string) {
 	must("Restart bluetooth chip", cmd.Run())
 
 	time.Sleep(5 * time.Second)
-}
-
-func randomName() string {
-	var characters = "ABCDEFGHIJKLMNOPQRSTUVXYZ"
-	var length = len(characters)
-	var name = string(characters[randomInt(0, length)]) +
-		string(characters[randomInt(0, length)]) +
-		string(characters[randomInt(0, length)]) +
-		strconv.Itoa(int(randomInt(0, 9))) +
-		strconv.Itoa(int(randomInt(0, 9))) +
-		strconv.Itoa(int(randomInt(0, 9))) +
-		strconv.Itoa(int(randomInt(0, 9))) +
-		strconv.Itoa(int(randomInt(0, 9))) +
-		string(characters[randomInt(0, length)]) +
-		string(characters[randomInt(0, length)])
-
-	return name
-}
-
-func randomHex() string {
-	return fmt.Sprintf("%x", randomInt(0, 255))
-}
-
-func randomInt(min, max int) uint8 {
-	return uint8(min + rand.Intn(max-min))
 }
 
 func must(action string, err error) {
