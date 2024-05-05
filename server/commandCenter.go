@@ -10,7 +10,7 @@ import (
 )
 
 type CommandCenter struct {
-	encryption          DanaEncryption
+	encryption          *DanaEncryption
 	state               *SimulatorState
 	writeCharacteristic *bluetooth.Characteristic
 

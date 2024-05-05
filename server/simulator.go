@@ -21,7 +21,10 @@ const (
 var _, timeZoneOffset = time.Now().Zone()
 
 type Simulator struct {
-	readBuffer []byte
+	State         *SimulatorState
+	encryption    *DanaEncryption
+	commandCenter *CommandCenter
+	readBuffer    []byte
 
 	shouldDoSecondDecryption bool
 
@@ -29,19 +32,26 @@ type Simulator struct {
 	readCharacteristic  bluetooth.Characteristic
 }
 
-var state = GetDefaultState()
+func NewSimulator() Simulator {
+	var state = GetDefaultState()
+	var encryption = DanaEncryption{
+		state: &state,
+	}
 
-var encryption = DanaEncryption{
-	state: &state,
-}
+	var commandCenter = CommandCenter{
+		state:      &state,
+		encryption: &encryption,
+	}
 
-var commandCenter = CommandCenter{
-	state:      &state,
-	encryption: encryption,
+	return Simulator{
+		State:         &state,
+		encryption:    &encryption,
+		commandCenter: &commandCenter,
+	}
 }
 
 func (s *Simulator) StartBluetooth() {
-	setDeviceName(state.Name)
+	setDeviceName(s.State.Name)
 
 	var adapter = bluetooth.DefaultAdapter
 	// TinyGo bluetooth (linux) doesnt support connection handler
@@ -71,7 +81,7 @@ func (s *Simulator) StartBluetooth() {
 
 	// Start advertising
 	must("start adv", adv.Start())
-	fmt.Println("Adversing with name: " + state.Name)
+	fmt.Println("Adversing with name: " + s.State.Name)
 
 	must("add service", adapter.AddService(&bluetooth.Service{
 		UUID: bluetooth.New16BitUUID(0xFFF0),
@@ -92,7 +102,8 @@ func (s *Simulator) StartBluetooth() {
 		},
 	}))
 
-	commandCenter.writeCharacteristic = &s.writeCharacteristic
+	s.commandCenter.writeCharacteristic = &s.writeCharacteristic
+	s.State.Status = STATUS_RUNNING
 }
 
 func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value []byte) {
@@ -102,7 +113,7 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 	// Since TinyGo Bluetooth doesnt notify us when a device is connected or disconnected,
 	// is this the only we currently
 
-	if state.PumpType == PUMP_TYPE_DANA_RS_V1 {
+	if s.State.PumpType == PUMP_TYPE_DANA_RS_V1 {
 		// Isnt supported with the DanaRS_v1
 		s.shouldDoSecondDecryption = false
 	} else if len(s.readBuffer) == 0 {
@@ -111,7 +122,7 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 	}
 
 	if s.shouldDoSecondDecryption {
-		value = encryption.DecryptionSecondLvl(value)
+		value = s.encryption.DecryptionSecondLvl(value)
 	}
 
 	s.readBuffer = append(s.readBuffer, value...)
@@ -152,7 +163,7 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 		return
 	}
 
-	var decryptedData = encryption.Decryption(s.readBuffer)
+	var decryptedData = s.encryption.Decryption(s.readBuffer)
 	s.readBuffer = []byte{}
 
 	if len(decryptedData) == 0 {
@@ -161,10 +172,10 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 	}
 
 	if decryptedData[0] == TYPE_ENCRYPTION_REQUEST {
-		commandCenter.ProcessEncryptionCommand(decryptedData)
+		s.commandCenter.ProcessEncryptionCommand(decryptedData)
 
 	} else if decryptedData[0] == TYPE_COMMAND {
-		commandCenter.ProcessCommand(decryptedData)
+		s.commandCenter.ProcessCommand(decryptedData)
 
 	} else {
 		fmt.Println("ERROR: Received invalid command type. Got: " + fmt.Sprint(decryptedData[0]))
