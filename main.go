@@ -1,32 +1,47 @@
 package main
 
 import (
+	"dana/simulator/server"
+	"log"
 	"net/http"
 
-	"dana/simulator/server"
-
-	"github.com/gin-gonic/contrib/static"
-	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
+var upgrader = websocket.Upgrader{}
+
+var s = server.NewSimulator()
+
 func main() {
-	var s server.Simulator
 	s.StartBluetooth()
+	// http.HandleFunc("/ws", handleWS)
+	// http.ListenAndServe(":3003", nil)
+}
 
-	// Set the router as the default one shipped with Gin
-	router := gin.New()
-	router.Use(static.Serve("/", static.LocalFile("./client/dist", true)))
+func handleWS(w http.ResponseWriter, r *http.Request) {
+	// Upgrade upgrades the HTTP server connection to the WebSocket protocol.
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Print("upgrade failed: ", err)
+		return
+	}
+	defer conn.Close()
 
-	// Setup route group for the API
-	api := router.Group("/api")
-	{
-		api.GET("/", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "pong",
-			})
-		})
+	// Continuosly read and write message
+	for {
+		mt, message, err := conn.ReadMessage()
+		if err != nil {
+			log.Println("read failed:", err)
+			break
+		}
+		input := string(message)
+	}
+}
+
+func startPump() {
+	if s.State.Status == server.STATUS_RUNNING {
+		return
 	}
 
-	// Start and run the server
-	router.Run(":5000")
+	s.StartBluetooth()
 }

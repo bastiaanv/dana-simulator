@@ -14,8 +14,8 @@ var ble5RandomKeys = []byte{
 }
 
 // DanaRS-v3
-var pairingKeys = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
-var randomPairingKeys = []byte{0x00, 0x00, 0x00}
+var pairingKeys = []byte{0x79, 0x6F, 0x49, 0xcf, 0xe1, 0x8b}
+var randomPairingKeys = []byte{0x37, 0x95, 0xd7, 0x8f}
 
 // DanaRS-v1
 var timeSecret = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
@@ -35,7 +35,7 @@ type EncryptionParams struct {
 }
 
 func (e *DanaEncryption) ResetRandomSyncKey() {
-	e.randomSyncKey = 0
+	e.randomSyncKey = initialRandomSyncKey(pairingKeys)
 }
 
 func (e DanaEncryption) EncodePumpBusy() []byte {
@@ -253,10 +253,13 @@ func (e DanaEncryption) encodePumpCheck() []byte {
 
 		// Hardware model
 		data[3] = 0x05
-		data[4] = 0x00
+		data[4] = 0x50
 
 		// Firmware protocol
 		data[5] = 0x13
+		data[6] = 0xc4
+
+		e.randomSyncKey = encryptionRandomSyncKey(0xc4, randomPairingKeys)
 	} else {
 		data[0] = 0x04
 	}

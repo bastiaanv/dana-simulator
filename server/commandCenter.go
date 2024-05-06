@@ -10,7 +10,7 @@ import (
 )
 
 type CommandCenter struct {
-	encryption          DanaEncryption
+	encryption          *DanaEncryption
 	state               *SimulatorState
 	writeCharacteristic *bluetooth.Characteristic
 
@@ -24,7 +24,7 @@ func (c *CommandCenter) ProcessEncryptionCommand(data []byte) {
 		c.respondToCommandRequest()
 		return
 	case OPCODE_ENCRYPTION__TIME_INFORMATION:
-		c.respondToTimeRequest()
+		c.respondToTimeRequest(data)
 		return
 	}
 
@@ -121,7 +121,16 @@ func (c *CommandCenter) respondToCommandRequest() {
 	c.write(data)
 }
 
-func (c *CommandCenter) respondToTimeRequest() {
+func (c *CommandCenter) respondToTimeRequest(request []byte) {
+	if request[2] == 1 {
+		c.encryption.ResetRandomSyncKey()
+
+		fmt.Println("---------------------------------------")
+		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Pairing key: " + base64.StdEncoding.EncodeToString(pairingKeys))
+		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Random pairing key: " + base64.StdEncoding.EncodeToString(randomPairingKeys))
+		fmt.Println("---------------------------------------")
+	}
+
 	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ENCRYPTION__TIME_INFORMATION, data: []byte{}})
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_ENCRYPTION__TIME_INFORMATION - Data: " + base64.StdEncoding.EncodeToString(data))

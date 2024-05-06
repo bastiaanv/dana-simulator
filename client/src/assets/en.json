@@ -1,0 +1,15 @@
+{
+  "TITLE": "DanaRS-v3/Dana-I simulator",
+  "BASIC.TITLE": "Basic information",
+  "BASIC.SUB_TITLE": "Some base information regarding the pump",
+  "BASIC.FORM.NAME": "Pump name",
+  "BASIC.FORM.TYPE": "Pump type",
+  "BASIC.FORM.TYPES.0": "DanaRS-v1",
+  "BASIC.FORM.TYPES.1": "DanaRS-v3",
+  "BASIC.FORM.TYPES.2": "Dana-I",
+  "BASIC.FORM.RESERVOIR": "Reservoir level",
+  "BASIC.FORM.BATTERY": "Battery level",
+  "BASIC.ACTION.SAVE": "Save",
+  "BASIC.ACTION.START": "Start",
+  "BASIC.ACTION.STOP": "Stop"
+}
