@@ -77,7 +77,7 @@ type SimulatorState struct {
 	TargetBg             int
 }
 
-func (s *SimulatorState) save() {
+func (s *SimulatorState) Save() {
 	json, err := json.Marshal(s)
 	if err != nil {
 		fmt.Println(err)
@@ -140,7 +140,7 @@ func GetDefaultState() SimulatorState {
 		RefillAmount:         300,
 		TargetBg:             5,
 	}
-	state.save()
+	state.Save()
 
 	return state
 }

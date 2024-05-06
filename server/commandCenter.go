@@ -88,6 +88,21 @@ func (c *CommandCenter) ProcessCommand(data []byte) {
 	case OPCODE_BASAL__SET_SUSPEND_OFF:
 		c.respondToSuspend(false)
 		return
+	case OPCODE_BASAL__SET_TEMPORARY_BASAL:
+		c.respondToTempBasal(OPCODE_BASAL__SET_TEMPORARY_BASAL, int(data[2]), time.Duration(int(data[3])*int(time.Hour)))
+		return
+	case OPCODE_BASAL__APS_SET_TEMPORARY_BASAL:
+		var percentage = int(data[2]) + (int(data[3]) << 8)
+		var duration time.Duration = time.Duration(15 * time.Second)
+		if data[4] == 160 {
+			duration = time.Duration(30 * time.Second)
+		}
+
+		c.respondToTempBasal(OPCODE_BASAL__APS_SET_TEMPORARY_BASAL, percentage, duration)
+		return
+	case OPCODE_BASAL__CANCEL_TEMPORARY_BASAL:
+		c.respondToStopTempBasal()
+		return
 	}
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " ERROR: UNIMPLEMENTED COMMAND: " + fmt.Sprint(data[1]))
@@ -313,7 +328,7 @@ func (c *CommandCenter) respondToSetTime(request []byte) {
 
 	var diff = pumpTime.Sub(requestTime)
 	c.state.PumpTimeSkewInSeconds = int(diff.Seconds())
-	c.state.save()
+	c.state.Save()
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_OPTION__SET_PUMP_TIME - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
 	c.encodeAndWrite(OPCODE_OPTION__SET_PUMP_TIME, []byte{0x00})
@@ -326,7 +341,7 @@ func (c *CommandCenter) respondToSetTimeWithUtc(request []byte) {
 	var diff = pumpTime.Sub(requestTime)
 	c.state.PumpTimeSkewInSeconds = int(diff.Seconds())
 	c.state.PumpTimeZoneOffsetInSeconds = int(request[8]) * 3600
-	c.state.save()
+	c.state.Save()
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_OPTION__SET_PUMP_UTC_AND_TIME_ZONE - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
 	c.encodeAndWrite(OPCODE_OPTION__SET_PUMP_UTC_AND_TIME_ZONE, []byte{0x00})
@@ -372,7 +387,7 @@ func (c *CommandCenter) respondToSetBasal(message []byte) {
 	}
 
 	c.state.BasalSchedule = basalSchedule
-	c.state.save()
+	c.state.Save()
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_BASAL__SET_PROFILE_BASAL_RATE - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
 	c.encodeAndWrite(OPCODE_BASAL__SET_PROFILE_BASAL_RATE, []byte{0x00})
@@ -385,7 +400,7 @@ func (c *CommandCenter) respondToSetBasalProfile() {
 
 func (c *CommandCenter) respondToSuspend(activated bool) {
 	c.state.IsSuspended = activated
-	c.state.save()
+	c.state.Save()
 
 	if activated {
 		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_BASAL__SET_SUSPEND_ON - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
@@ -394,6 +409,37 @@ func (c *CommandCenter) respondToSuspend(activated bool) {
 		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_BASAL__SET_SUSPEND_OFF - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
 		c.encodeAndWrite(OPCODE_BASAL__SET_SUSPEND_OFF, []byte{0x00})
 	}
+}
+
+func (c *CommandCenter) respondToStopTempBasal() {
+	if c.state.TempBasalActiveTill == nil {
+		fmt.Println(time.Now().Format(time.RFC3339) + " ERROR: No acitve temp basal, nothing to canel - Data: " + base64.StdEncoding.EncodeToString([]byte{0x01}))
+		c.encodeAndWrite(OPCODE_BASAL__CANCEL_TEMPORARY_BASAL, []byte{0x01})
+		return
+	}
+
+	c.state.TempBasalPercentage = 100
+	c.state.TempBasalActiveTill = nil
+	c.state.Save()
+
+	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_BASAL__CANCEL_TEMPORARY_BASAL - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
+	c.encodeAndWrite(OPCODE_BASAL__CANCEL_TEMPORARY_BASAL, []byte{0x00})
+}
+
+func (c *CommandCenter) respondToTempBasal(code byte, percentage int, duration time.Duration) {
+	if percentage > 200 && duration > 15*time.Second {
+		// reject any temp basal command which is bigger than 200% that isnt 15 min long
+		c.encodeAndWrite(code, []byte{0x01})
+		return
+	}
+
+	var activeTill = time.Now().Add(duration)
+	c.state.TempBasalPercentage = percentage
+	c.state.TempBasalActiveTill = &activeTill
+	c.state.Save()
+
+	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Setting temp basal - percentage: " + fmt.Sprint(percentage) + "%, duration: " + fmt.Sprint(duration))
+	c.encodeAndWrite(code, []byte{0x00})
 }
 
 func (c *CommandCenter) encodeAndWrite(code byte, message []byte) {
@@ -467,7 +513,7 @@ func (c *CommandCenter) storeBolus(amount float32) {
 	}
 
 	c.state.History = append(c.state.History, historyItem)
-	c.state.save()
+	c.state.Save()
 }
 
 func (c *CommandCenter) currentBasal() float32 {
