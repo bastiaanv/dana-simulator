@@ -13,12 +13,12 @@ var upgrader = websocket.Upgrader{}
 var s = server.NewSimulator()
 
 func main() {
-
-	http.HandleFunc("/ws", handleWS)
-	http.ListenAndServe(":3003", nil)
+	s.StartBluetooth()
+	// http.HandleFunc("/ws", handleWS)
+	// http.ListenAndServe(":3003", nil)
 }
 
-func handWS(w http.ResponseWriter, r *http.Request) {
+func handleWS(w http.ResponseWriter, r *http.Request) {
 	// Upgrade upgrades the HTTP server connection to the WebSocket protocol.
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
