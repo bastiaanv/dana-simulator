@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -75,7 +76,7 @@ func (s *Simulator) StartBluetooth() {
 	// Define the peripheral device info.
 	adv := adapter.DefaultAdvertisement()
 	must("config adv", adv.Configure(bluetooth.AdvertisementOptions{
-		LocalName:    state.Name,
+		LocalName:    s.State.Name,
 		ServiceUUIDs: []bluetooth.UUID{},
 	}))
 
@@ -104,6 +105,14 @@ func (s *Simulator) StartBluetooth() {
 
 	s.commandCenter.writeCharacteristic = &s.writeCharacteristic
 	s.State.Status = STATUS_RUNNING
+
+	json, err := json.Marshal(s.State)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println(time.Now().Format(time.RFC3339) + "INFO: Running pump with state: " + string(json))
 }
 
 func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value []byte) {
@@ -122,6 +131,7 @@ func (s *Simulator) handleMessage(client bluetooth.Connection, offset int, value
 	}
 
 	if s.shouldDoSecondDecryption {
+		fmt.Println("Doing second lvl decryption")
 		value = s.encryption.DecryptionSecondLvl(value)
 	}
 

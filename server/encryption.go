@@ -157,7 +157,7 @@ func (e *DanaEncryption) Decryption(data []byte) []byte {
 func (e *DanaEncryption) DecryptionSecondLvl(data []byte) []byte {
 	if e.state.PumpType == PUMP_TYPE_DANA_RS_V3 {
 		for i := 0; i < len(data); i++ {
-			copyRandomSyncKey := data[i]
+			var copyRandomSyncKey = data[i]
 
 			data[i] += secondLvlEncryptionLookup[randomPairingKeys[2]]
 			data[i] -= secondLvlEncryptionLookup[randomPairingKeys[1]]
@@ -191,6 +191,7 @@ func (e *DanaEncryption) DecryptionSecondLvl(data []byte) []byte {
 		}
 
 		if data[0] == 0x7a && data[1] == 0x7a {
+			fmt.Println("Found start")
 			data[0] = 0xa5
 			data[1] = 0xa5
 		}
@@ -215,21 +216,21 @@ func (e *DanaEncryption) DecryptionSecondLvl(data []byte) []byte {
 func (e DanaEncryption) encodePumpCheck() []byte {
 	var length byte = 0x04 // Default length of DanaRS-v1
 	if e.state.PumpType == PUMP_TYPE_DANA_RS_V3 {
-		length = 0x09
+		length = 0x07
 	} else if e.state.PumpType == PUMP_TYPE_DANA_I {
 		length = 0x0c
 	}
 
 	var data = make([]byte, length)
 
+	// OK - response code
+	data[0] = 0x4f // O
+	data[1] = 0x4b // K
+	data[2] = 0x4d // Unknown usage
+
 	// Data
+
 	if e.state.PumpType == PUMP_TYPE_DANA_I {
-		// OK - response code
-		data[0] = 0x4f // O
-		data[1] = 0x4b // K
-
-		data[2] = 0x4d // Unknown usage
-
 		// Hardware model
 		data[3] = 0x09
 		data[4] = 0x50 // Unsure what this value is, but is unused
@@ -245,23 +246,18 @@ func (e DanaEncryption) encodePumpCheck() []byte {
 		data[10] = ble5Keys[4]
 		data[11] = ble5Keys[5]
 	} else if e.state.PumpType == PUMP_TYPE_DANA_RS_V3 {
-		// OK - response code
-		data[0] = 0x4f // O
-		data[1] = 0x4b // K
-
-		data[2] = 0x4d // Unknown usage
-
 		// Hardware model
 		data[3] = 0x05
 		data[4] = 0x50
 
 		// Firmware protocol
-		data[5] = 0x13
-		data[6] = 0xc4
+		data[5] = 0x11
 
-		e.randomSyncKey = encryptionRandomSyncKey(0xc4, randomPairingKeys)
+		// Random sync key
+		e.randomSyncKey = initialRandomSyncKey(pairingKeys)
+		data[6] = encryptionRandomSyncKey(e.randomSyncKey, randomPairingKeys)
 	} else {
-		data[0] = 0x04
+		data[3] = 0x04
 	}
 
 	return e.encodeMessage(data, OPCODE_ENCRYPTION__PUMP_CHECK, true, false)
@@ -271,7 +267,7 @@ func (e DanaEncryption) encodeTimeInformation() []byte {
 	var length byte = 1
 
 	var data = make([]byte, length)
-	if e.state.PumpType == PUMP_TYPE_DANA_I {
+	if e.state.PumpType != PUMP_TYPE_DANA_RS_V1 {
 		data[0] = 0x00
 	}
 
@@ -463,16 +459,7 @@ func encryptionRandomSyncKey(randomSyncKey uint8, randomPairingKey []byte) uint8
 	tmp = ((randomSyncKey >> 4) | ((randomSyncKey & 0xF) << 4)) + randomPairingKey[0]
 	tmp = ((tmp >> 4) | ((tmp & 0xF) << 4)) ^ randomPairingKey[1]
 
-	return ((tmp >> 4) | ((tmp & 0xF) << 4)) - randomPairingKey[2]
-}
-
-func decryptionRandomSyncKey(randomSyncKey uint8, randomPairingKey []byte) uint8 {
-	var tmp uint8 = 0
-
-	tmp = ((randomSyncKey + randomPairingKey[2]) >> 4) | ((((randomSyncKey + randomPairingKey[2]) & 0xF) << 4) ^ randomPairingKey[1])
-	tmp = ((tmp >> 4) | ((tmp & 0xF) << 4)) - randomPairingKey[0]
-
-	return (tmp >> 4) | ((tmp & 0xF) << 4)
+	return ((tmp << 4) | (tmp >> 4)) - randomPairingKey[2]
 }
 
 func initialRandomSyncKey(pairingKey []byte) uint8 {

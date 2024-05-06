@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"time"
@@ -126,8 +127,8 @@ func (c *CommandCenter) respondToTimeRequest(request []byte) {
 		c.encryption.ResetRandomSyncKey()
 
 		fmt.Println("---------------------------------------")
-		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Pairing key: " + base64.StdEncoding.EncodeToString(pairingKeys))
-		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Random pairing key: " + base64.StdEncoding.EncodeToString(randomPairingKeys))
+		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Pairing key: " + hex.EncodeToString(pairingKeys))
+		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Random pairing key: " + hex.EncodeToString(randomPairingKeys))
 		fmt.Println("---------------------------------------")
 	}
 
