@@ -122,7 +122,7 @@ func (c *CommandCenter) respondToCommandRequest() {
 		return
 	}
 
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ENCRYPTION__PUMP_CHECK, data: []byte{}})
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ENCRYPTION__PUMP_CHECK, data: []byte{}, isEncryptionCommand: true})
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_ENCRYPTION__PUMP_CHECK - Data: " + base64.StdEncoding.EncodeToString(data))
 	c.write(data)
@@ -138,14 +138,14 @@ func (c *CommandCenter) respondToTimeRequest(request []byte) {
 		fmt.Println("---------------------------------------")
 	}
 
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ENCRYPTION__TIME_INFORMATION, data: []byte{}})
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ENCRYPTION__TIME_INFORMATION, data: []byte{}, isEncryptionCommand: true})
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_ENCRYPTION__TIME_INFORMATION - Data: " + base64.StdEncoding.EncodeToString(data))
 	c.write(data)
 }
 
 func (c CommandCenter) respondToKeepConnection() {
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ETC__KEEP_CONNECTION, data: []byte{0}})
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: OPCODE_ETC__KEEP_CONNECTION, data: []byte{0}, isEncryptionCommand: false})
 	data = c.encryption.EncryptionSecondLvl(data)
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_ETC__KEEP_CONNECTION - Data: " + base64.StdEncoding.EncodeToString([]byte{0}))
@@ -516,7 +516,7 @@ func (c *CommandCenter) respondToBolusStepInformation() {
 }
 
 func (c *CommandCenter) encodeAndWrite(code byte, message []byte) {
-	var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message})
+	var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message, isEncryptionCommand: false})
 	data = c.encryption.EncryptionSecondLvl(data)
 	c.write(data)
 }
@@ -544,7 +544,7 @@ func (c *CommandCenter) doBolus(amount float32, speed byte) {
 		message[0] = byte(currentAmount)
 		message[1] = byte(currentAmount >> 8)
 
-		var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message, isNotifyCommand: true})
+		var data = c.encryption.Encryption(EncryptionParams{operationCode: code, data: message, isNotifyCommand: true, isEncryptionCommand: false})
 		data = c.encryption.EncryptionSecondLvl(data)
 
 		fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_BOLUS__SET_STEP_BOLUS_START - Data: " + base64.StdEncoding.EncodeToString(message))

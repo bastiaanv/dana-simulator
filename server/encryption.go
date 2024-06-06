@@ -29,9 +29,10 @@ type DanaEncryption struct {
 }
 
 type EncryptionParams struct {
-	operationCode   byte
-	data            []byte
-	isNotifyCommand bool
+	operationCode       byte
+	data                []byte
+	isNotifyCommand     bool
+	isEncryptionCommand bool
 }
 
 func (e *DanaEncryption) ResetRandomSyncKey() {
@@ -49,11 +50,13 @@ func (e DanaEncryption) EncodePumpBusy() []byte {
 }
 
 func (e DanaEncryption) Encryption(params EncryptionParams) []byte {
-	switch params.operationCode {
-	case OPCODE_ENCRYPTION__PUMP_CHECK:
-		return e.encodePumpCheck()
-	case OPCODE_ENCRYPTION__TIME_INFORMATION:
-		return e.encodeTimeInformation()
+	if params.isEncryptionCommand {
+		switch params.operationCode {
+		case OPCODE_ENCRYPTION__PUMP_CHECK:
+			return e.encodePumpCheck()
+		case OPCODE_ENCRYPTION__TIME_INFORMATION:
+			return e.encodeTimeInformation()
+		}
 	}
 
 	return e.encodeMessage(params.data, params.operationCode, false, params.isNotifyCommand)
