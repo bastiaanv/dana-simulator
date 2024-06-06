@@ -2,6 +2,8 @@
 
 ### Getting started
 
+> Note: This simulator isn't able to do the native iOS security pincode prompt, due to limitations of the BLE stack
+
 Before starting:
 
 1. Ensure you have a raspberry Pi, (rPi) with Bluetooth support
@@ -30,19 +32,20 @@ mkdir ~/dana-simulator
 cd ~/dana-simulator
 ```
 
-One time only, build the simulator:
+One time only, build the simulator & run it via:
 
 ```
 go build
+./simulator
+```
+
+Or for development you can run it directly via:
+
+```
+go run .
 ```
 
 Use a phone with an app that supports DanaKit and select the dana option for the pump. Follow the prompts until the app is ready to scan for a pump.
-
-In the `~/dana-simulator` folder on the rPi and type:
-
-```
-./simulator
-```
 
 The phone app should find the simulator and allow you to connect to it.
 
