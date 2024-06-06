@@ -75,6 +75,10 @@ type SimulatorState struct {
 	CannulaVolume        int
 	RefillAmount         int
 	TargetBg             int
+
+	// Pump limits
+	MaxBasal int
+	MaxBolus int
 }
 
 func (s *SimulatorState) Save() {
@@ -139,6 +143,9 @@ func GetDefaultState() SimulatorState {
 		ShutdownInHours:      0,
 		RefillAmount:         300,
 		TargetBg:             5,
+
+		MaxBasal: 3,
+		MaxBolus: 10,
 	}
 	state.Save()
 

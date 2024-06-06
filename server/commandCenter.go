@@ -104,6 +104,12 @@ func (c *CommandCenter) ProcessCommand(data []byte) {
 	case OPCODE_BASAL__CANCEL_TEMPORARY_BASAL:
 		c.respondToStopTempBasal()
 		return
+	case OPCODE_BASAL__GET_BASAL_RATE:
+		c.respondToBasalGetRate()
+		return
+	case OPCODE_BOLUS__GET_STEP_BOLUS_INFORMATION:
+		c.respondToBolusStepInformation()
+		return
 	}
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " ERROR: UNIMPLEMENTED COMMAND: " + fmt.Sprint(data[1]))
@@ -450,6 +456,63 @@ func (c *CommandCenter) respondToTempBasal(code byte, percentage int, duration t
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Setting temp basal - percentage: " + fmt.Sprint(percentage) + "%, duration: " + fmt.Sprint(duration))
 	c.encodeAndWrite(code, []byte{0x00})
+}
+
+func (c *CommandCenter) respondToBasalGetRate() {
+	var message = []byte{
+		// Max basal
+		byte(c.state.MaxBasal * 100), byte((c.state.MaxBasal * 100) >> 8),
+		// Basal step
+		1,
+		// Basal rate
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+		0, 0,
+	}
+
+	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Get basal rate - Data: " + base64.StdEncoding.EncodeToString(message))
+	c.encodeAndWrite(OPCODE_BASAL__GET_BASAL_RATE, message)
+}
+
+func (c *CommandCenter) respondToBolusStepInformation() {
+	var message = []byte{
+		// Bolus type
+		0, 0,
+		// Initial bolus amount
+		0, 0,
+		// last bolus time (hh:mm)
+		0, 0,
+		// last bolus amount
+		0, 0,
+		// Max bolus
+		byte(c.state.MaxBolus * 100), byte((c.state.MaxBolus * 100) >> 8),
+		// Bolus step
+		0,
+	}
+	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Get bolus step rate - Data: " + base64.StdEncoding.EncodeToString(message))
+	c.encodeAndWrite(OPCODE_BOLUS__GET_STEP_BOLUS_INFORMATION, message)
 }
 
 func (c *CommandCenter) encodeAndWrite(code byte, message []byte) {
