@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/base64"
 	"fmt"
+	"time"
 )
 
 // Dana-I
@@ -36,6 +37,7 @@ type EncryptionParams struct {
 }
 
 func (e *DanaEncryption) ResetRandomSyncKey() {
+	fmt.Println("Reset random sync key")
 	e.randomSyncKey = initialRandomSyncKey(pairingKeys)
 }
 
@@ -46,10 +48,11 @@ func (e DanaEncryption) EncodePumpBusy() []byte {
 	message[2] = 0x53 // S
 	message[3] = 0x59 // Y
 
+	fmt.Println(time.Now().Format(time.RFC3339) + "INFO: Sending BUSY response")
 	return e.encodeMessage([]byte{}, OPCODE_ENCRYPTION__PUMP_CHECK, true, false)
 }
 
-func (e DanaEncryption) Encryption(params EncryptionParams) []byte {
+func (e *DanaEncryption) Encryption(params EncryptionParams) []byte {
 	if params.isEncryptionCommand {
 		switch params.operationCode {
 		case OPCODE_ENCRYPTION__PUMP_CHECK:
@@ -109,6 +112,7 @@ func (e *DanaEncryption) EncryptionSecondLvl(data []byte) []byte {
 		}
 
 		e.randomSyncKey = updatedRandomSyncKey
+		fmt.Println("RandomSyncKey (encrypt): " + fmt.Sprint(e.randomSyncKey))
 	} else if e.state.PumpType == PUMP_TYPE_DANA_I {
 		if data[0] == 0xa5 && data[1] == 0xa5 {
 			data[0] = 0xaa
@@ -192,9 +196,9 @@ func (e *DanaEncryption) DecryptionSecondLvl(data []byte) []byte {
 
 			e.randomSyncKey = copyRandomSyncKey
 		}
+		fmt.Println("RandomSyncKey (decrypt): " + fmt.Sprint(e.randomSyncKey))
 
 		if data[0] == 0x7a && data[1] == 0x7a {
-			fmt.Println("Found start")
 			data[0] = 0xa5
 			data[1] = 0xa5
 		}
@@ -216,7 +220,7 @@ func (e *DanaEncryption) DecryptionSecondLvl(data []byte) []byte {
 	return data
 }
 
-func (e DanaEncryption) encodePumpCheck() []byte {
+func (e *DanaEncryption) encodePumpCheck() []byte {
 	var length byte = 0x04 // Default length of DanaRS-v1
 	if e.state.PumpType == PUMP_TYPE_DANA_RS_V3 {
 		length = 0x07
@@ -258,6 +262,7 @@ func (e DanaEncryption) encodePumpCheck() []byte {
 
 		// Random sync key
 		e.randomSyncKey = initialRandomSyncKey(pairingKeys)
+		fmt.Println("RandomSyncKey: " + fmt.Sprint(e.randomSyncKey))
 		data[6] = encryptionRandomSyncKey(e.randomSyncKey, randomPairingKeys)
 	} else {
 		data[3] = 0x04

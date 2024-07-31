@@ -36,7 +36,8 @@ type Simulator struct {
 func NewSimulator() Simulator {
 	var state = GetDefaultState()
 	var encryption = DanaEncryption{
-		state: &state,
+		state:         &state,
+		randomSyncKey: 0,
 	}
 
 	var commandCenter = CommandCenter{
