@@ -46,7 +46,7 @@ func (c *CommandCenter) ProcessCommand(data []byte) {
 		return
 	}
 
-	switch data[1] {
+	switch command {
 	case OPCODE_ETC__KEEP_CONNECTION:
 		c.respondToKeepConnection()
 		return
@@ -67,6 +67,9 @@ func (c *CommandCenter) ProcessCommand(data []byte) {
 		return
 	case OPCODE_OPTION__GET_USER_OPTION:
 		c.respondToGetUserOptions()
+		return
+	case OPCODE_OPTION__SET_USER_OPTION:
+		c.respondToSetUserOptions(data)
 		return
 	case OPCODE_REVIEW__SET_HISTORY_UPLOAD_MODE:
 		c.respondToSetHistoryMode(data[2] == 1)
@@ -290,6 +293,27 @@ func (c CommandCenter) respondToGetUserOptions() {
 
 	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_OPTION__GET_USER_OPTION - Data: " + base64.StdEncoding.EncodeToString(message))
 	c.encodeAndWrite(OPCODE_OPTION__GET_USER_OPTION, message)
+}
+
+func (c *CommandCenter) respondToSetUserOptions(request []byte) {
+	c.state.TimeDisplayIn12H = request[2] == 0x01
+	c.state.ButtonScroll = request[3] == 0x01
+	c.state.BeepAndAlarm = int(request[4])
+	c.state.LcdOnInSeconds = int(request[5])
+	c.state.BacklightOnInSeconds = int(request[6])
+	c.state.SelectedLanguage = int(request[7])
+	c.state.Units = int(request[8])
+	c.state.ShutdownInHours = int(request[9])
+	c.state.LowReservoirWarning = int(request[10])
+	c.state.CannulaVolume = int(request[11]) | (int(request[12]) << 8)
+	c.state.RefillAmount = int(request[13]) | (int(request[14]) << 8)
+
+	if c.state.PumpType == PUMP_TYPE_DANA_I {
+		c.state.TargetBg = int(request[15]) | (int(request[16]) << 8)
+	}
+
+	fmt.Println(time.Now().Format(time.RFC3339) + " INFO: Sending OPCODE_OPTION__SET_USER_OPTION - Data: " + base64.StdEncoding.EncodeToString([]byte{0x00}))
+	c.encodeAndWrite(OPCODE_OPTION__SET_USER_OPTION, []byte{0x00})
 }
 
 func (c *CommandCenter) respondToSetHistoryMode(enabled bool) {
