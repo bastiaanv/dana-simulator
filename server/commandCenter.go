@@ -93,7 +93,7 @@ func (c *CommandCenter) ProcessCommand(data []byte) {
 		c.respondToSuspend(false)
 		return
 	case OPCODE_BASAL__SET_TEMPORARY_BASAL:
-		c.respondToTempBasal(OPCODE_BASAL__SET_TEMPORARY_BASAL, int(data[2]), time.Duration(int(data[3])*int(time.Hour)))
+		c.respondToTempBasal(OPCODE_BASAL__SET_TEMPORARY_BASAL, int(data[2]), time.Duration(data[3])*time.Hour)
 		return
 	case OPCODE_BASAL__APS_SET_TEMPORARY_BASAL:
 		var percentage = int(data[2]) + (int(data[3]) << 8)
