@@ -1,3 +1,6 @@
+> [!WARNING]
+> This project is archived in favour of [Unified Pump Simulator](https://github.com/bastiaanv/unified-pump-simulator)
+
 # Dana-i / DanaRS-v3 simulator
 
 ### Getting started
